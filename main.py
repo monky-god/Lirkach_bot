@@ -1,11 +1,13 @@
 from __future__ import annotations
 import asyncio
 import os
+import json
 from dataclasses import dataclass
 from typing import Dict, Tuple
 from aiogram.client.default import DefaultBotProperties
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
+
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -31,6 +33,22 @@ def subscription_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✅ Подписаться", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
         [InlineKeyboardButton(text="🔄 Проверить подписку", callback_data="check_sub")]
     ])
+
+
+USERS_FILE = "users.json"
+
+def load_users() -> set[int]:
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            return set(json.load(f))
+    return set()
+
+def save_users(users: set[int]):
+    with open(USERS_FILE, "w") as f:
+        json.dump(list(users), f)
+
+# Загружаем пользователей при старте
+USERS = load_users()
 
 # --- Данные программ ---
 @dataclass(frozen=True)
@@ -135,6 +153,13 @@ def program_nav_kb(pkey: str) -> InlineKeyboardBuilder:
 
 # --- Обработчики ---
 async def cmd_start(message: Message, bot: Bot):
+    user_id = message.from_user.id
+
+    # Добавляем пользователя, если его нет
+    if user_id not in USERS:
+        USERS.add(user_id)
+        save_users(USERS)
+        print(f"Новый пользователь: {message.from_user.username or user_id} (всего {len(USERS)})")
     if await check_subscription(bot, message.from_user.id):
         await message.answer(
             "Привет! Выбери программу или гайд 👇",
@@ -154,6 +179,13 @@ async def cb_check_sub(call: CallbackQuery, bot: Bot):
         )
     else:
         await call.answer("Ты всё ещё не подписан!", show_alert=True)
+
+
+from aiogram.filters import Command
+
+async def cmd_stats(message: Message):
+    await message.answer(f"📊 Всего пользователей: <b>{len(USERS)}</b>")
+
 
 async def cb_programs(call: CallbackQuery):
     await call.message.edit_text("Выбери программу:", reply_markup=programs_kb().as_markup())
@@ -250,6 +282,7 @@ def setup_router(dp: Dispatcher):
     dp.message.register(cmd_start, CommandStart())
     dp.callback_query.register(cb_check_sub, F.data == "check_sub")
     dp.callback_query.register(cb_programs, F.data == "programs")
+    dp.message.register(cmd_stats, Command("stats"))
     dp.callback_query.register(cb_back_main, F.data == "back:main")
     dp.callback_query.register(cb_program_pick, F.data.startswith("prog:"))
     dp.callback_query.register(cb_program_show, F.data.startswith("prog_show:"))
