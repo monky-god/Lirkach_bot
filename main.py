@@ -70,105 +70,15 @@ def subscription_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔄 Проверить подписку", callback_data="check_sub")]
     ])
 
-# --- Программы тренировок ---
-@dataclass(frozen=True)
-class Exercise:
-    name: str
-    sets: int
-    reps: str
-    note: str = ""
-
-@dataclass(frozen=True)
-class WorkoutDay:
-    title: str
-    exercises: Tuple[Exercise, ...]
-
-@dataclass(frozen=True)
-class Program:
-    key: str
-    title: str
-    description: str
-    split: Tuple[WorkoutDay, ...]
-    weekly_days: int
-
-FULL_BODY_3 = Program(
-    key="full_body_3",
-    title="Full Body (3 дня)",
-    description="Целиком тело 3 раза в неделю. Фокус на базу + аксессуары.",
-    weekly_days=3,
-    split=(
-        WorkoutDay(
-            title="День A (Сила)",
-            exercises=(
-                Exercise("Жим ногами", 5, "5"),
-                Exercise("Жим штанги лёжа", 5, "5"),
-                Exercise("Тяга верхнего блока", 4, "6-8"),
-                Exercise("Отведение гантелей", 3, "8-10"),
-                Exercise("Подъем штанги на бицепс", 3, "12-15"),
-            ),
-        ),
-        WorkoutDay(
-            title="День B (Гипертрофия)",
-            exercises=(
-                Exercise("Становая тяга", 3, "3-5"),
-                Exercise("Жим стоя", 4, "6-8"),
-                Exercise("Подтягивания", 4, "8-10"),
-                Exercise("Выпады", 3, "10-12"),
-                Exercise("Подъём гантелей на бицепс", 3, "10-12"),
-            ),
-        ),
-        WorkoutDay(
-            title="День C (Общий)",
-            exercises=(
-                Exercise("Фронтальные приседы", 4, "5-6"),
-                Exercise("Жим гантелей на наклонной", 4, "8-10"),
-                Exercise("Тяга горизонтального блока", 4, "8-10"),
-                Exercise("Разведения на дельты", 3, "12-15"),
-                Exercise("Планка", 3, "40-60 сек"),
-            ),
-        ),
-    ),
-)
-PROGRAMS: Dict[str, Program] = {FULL_BODY_3.key: FULL_BODY_3}
-
-def render_day(day: WorkoutDay) -> str:
-    lines = [f"📌 <b>{day.title}</b>"]
-    for idx, ex in enumerate(day.exercises, start=1):
-        note = f" — {ex.note}" if ex.note else ""
-        lines.append(f"{idx}. {ex.name}: {ex.sets}×{ex.reps}{note}")
-    return "\n".join(lines)
-
-def render_program(program: Program) -> str:
-    header = f"🏋️‍♂️ <b>{program.title}</b>\n{program.description}\nДней в неделю: <b>{program.weekly_days}</b>\n— — —"
-    days = "\n\n".join(render_day(d) for d in program.split)
-    return f"{header}\n\n{days}"
-
 # --- Клавиатуры ---
 def main_menu_kb() -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
-    kb.button(text="📚 Программы", callback_data="programs")
-    kb.button(text="📘 Гайды", callback_data="guides_menu")
+    kb.button(text="💪 Индивидуальное ведение", callback_data="personal")
+    kb.button(text="📚 Гайды", callback_data="guides_menu")
     kb.button(text="ℹ️ Советы", callback_data="tips")
     kb.adjust(1)
     return kb
 
-def programs_kb() -> InlineKeyboardBuilder:
-    kb = InlineKeyboardBuilder()
-    for p in PROGRAMS.values():
-        kb.button(text=p.title, callback_data=f"prog:{p.key}")
-    kb.button(text="⬅️ Назад", callback_data="back:main")
-    kb.adjust(1)
-    return kb
-
-def program_nav_kb(pkey: str) -> InlineKeyboardBuilder:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="📄 Вся программа", callback_data=f"prog_show:{pkey}")
-    prog = PROGRAMS[pkey]
-    for i, day in enumerate(prog.split):
-        kb.button(text=f"🗓️ День {i+1}: {day.title}", callback_data=f"day:{pkey}:{i}")
-    kb.button(text="⬅️ Назад", callback_data="programs")
-    kb.adjust(1)
-    return kb
 
 # --- Обработчики команд ---
 async def cmd_start(message: Message, bot: Bot):
@@ -191,36 +101,30 @@ async def cmd_stats(message: Message):
     total = count_users()
     await message.answer(f"📊 Всего пользователей: <b>{total}</b>")
 
-async def cb_programs(call: CallbackQuery):
-    await call.message.edit_text("Выбери программу:", reply_markup=programs_kb().as_markup())
-    await call.answer()
 
 async def cb_back_main(call: CallbackQuery):
     await call.message.edit_text("Главное меню:", reply_markup=main_menu_kb().as_markup())
     await call.answer()
 
-async def cb_program_pick(call: CallbackQuery):
-    pkey = call.data.split(":", 1)[1]
-    prog = PROGRAMS[pkey]
+
+# --- Раздел "Индивидуальное ведение" ---
+def personal_kb() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back:main")]
+    ])
+    return kb
+
+async def cb_personal(call: CallbackQuery):
     await call.message.edit_text(
-        f"{prog.title}\n{prog.description}\nДней/нед: {prog.weekly_days}",
-        reply_markup=program_nav_kb(pkey).as_markup(),
+        "💪 Индивидуальное ведение\n\n"
+        "Хочешь персональные тренировки, питание и сопровождение?\n"
+        "Пиши мне в личку 👇\n\n"
+        "👉 <a href='https://t.me/R1t3ziz'>@R1t3ziz</a>",
+        parse_mode="HTML",
+        reply_markup=personal_kb()
     )
     await call.answer()
 
-async def cb_program_show(call: CallbackQuery):
-    pkey = call.data.split(":", 1)[1]
-    await call.message.edit_text(render_program(PROGRAMS[pkey]), parse_mode="HTML",
-                                 reply_markup=program_nav_kb(pkey).as_markup())
-    await call.answer()
-
-async def cb_day_show(call: CallbackQuery):
-    _, pkey, idx = call.data.split(":", 2)
-    prog = PROGRAMS[pkey]
-    day = prog.split[int(idx)]
-    await call.message.edit_text(render_day(day), parse_mode="HTML",
-                                 reply_markup=program_nav_kb(pkey).as_markup())
-    await call.answer()
 
 # --- Раздел "Гайды" ---
 PDF_MASS_PATH = "mass_guild.pdf"
@@ -264,16 +168,13 @@ def setup_router(dp: Dispatcher):
     dp.message.register(cmd_start, CommandStart())
     dp.callback_query.register(cb_check_sub, F.data == "check_sub")
     dp.message.register(cmd_stats, Command("stats"))
-    dp.callback_query.register(cb_programs, F.data == "programs")
     dp.callback_query.register(cb_back_main, F.data == "back:main")
-    dp.callback_query.register(cb_program_pick, F.data.startswith("prog:"))
-    dp.callback_query.register(cb_program_show, F.data.startswith("prog_show:"))
-    dp.callback_query.register(cb_day_show, F.data.startswith("day:"))
     dp.callback_query.register(cb_guides_menu, F.data == "guides_menu")
     dp.callback_query.register(cb_guide_mass, F.data == "guide_mass")
     dp.callback_query.register(cb_guide_recomp, F.data == "guide_recomp")
     dp.callback_query.register(cb_guide_sportpit, F.data == "guide_sportpit")
     dp.callback_query.register(cb_guide_gastro, F.data == "guide_gastro")
+    dp.callback_query.register(cb_personal, F.data == "personal")
     dp.callback_query.register(cb_guide_warmup_video, F.data == "guide_warmup_video")
 
 # --- Запуск ---
@@ -292,3 +193,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         print("❌ Бот остановлен")
+
