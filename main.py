@@ -157,11 +157,11 @@ async def send_file_or_text(call: CallbackQuery, path: str, file_type: str, capt
         await call.message.answer("❗ Файл ещё в разработке 😢")
     await call.answer()
 
-async def cb_guide_mass(call: CallbackQuery): await send_file_or_text(call, PDF_MASS_PATH, "pdf", "📘 Массоноборный гайд")
-async def cb_guide_recomp(call: CallbackQuery): await send_file_or_text(call, PDF_RECOMP_PATH, "pdf", "⚖️ Гайд на рекомпозицию")
-async def cb_guide_sportpit(call: CallbackQuery): await send_file_or_text(call, PDF_SPORTPIT_PATH, "pdf", "🍽️ Спортпит")
-async def cb_guide_gastro(call: CallbackQuery): await send_file_or_text(call, DOCX_GASTRO_PATH, "docx", "🫀 Гайд по ЖКТ")
-async def cb_guide_warmup_video(call: CallbackQuery): await send_file_or_text(call, VIDEO_WARMUP_PATH, "video", "🎥 Общесуставная разминка")
+async def cb_guide_mass(call: CallbackQuery): await send_file_or_text(call, PDF_MASS_PATH, "pdf")
+async def cb_guide_recomp(call: CallbackQuery): await send_file_or_text(call, PDF_RECOMP_PATH, "pdf")
+async def cb_guide_sportpit(call: CallbackQuery): await send_file_or_text(call, PDF_SPORTPIT_PATH, "pdf")
+async def cb_guide_gastro(call: CallbackQuery): await send_file_or_text(call, DOCX_GASTRO_PATH, "docx")
+async def cb_guide_warmup_video(call: CallbackQuery): await send_file_or_text(call, VIDEO_WARMUP_PATH, "video")
 
 # --- Регистрация ---
 def setup_router(dp: Dispatcher):
