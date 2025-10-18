@@ -1,13 +1,12 @@
 from __future__ import annotations
 import asyncio
 import os
-import json
 from dataclasses import dataclass
 from typing import Dict, Tuple
+
 from aiogram.client.default import DefaultBotProperties
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import CommandStart
-
+from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -15,12 +14,49 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
+# --- Настройки окружения ---
 load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_USERNAME = "@Lirkach0k"
 
-# Проверка подписки
+# --- Инициализация базы ---
+def init_db():
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id BIGINT PRIMARY KEY,
+            username TEXT,
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def add_user(user_id: int, username: str | None):
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO users (user_id, username)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id) DO NOTHING
+    """, (user_id, username))
+    conn.commit()
+    conn.close()
+
+def count_users() -> int:
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM users")
+    total = c.fetchone()["count"]
+    conn.close()
+    return total
+
+# --- Проверка подписки ---
 async def check_subscription(bot: Bot, user_id: int) -> bool:
     try:
         member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
@@ -34,23 +70,7 @@ def subscription_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔄 Проверить подписку", callback_data="check_sub")]
     ])
 
-
-USERS_FILE = "users.json"
-
-def load_users() -> set[int]:
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r") as f:
-            return set(json.load(f))
-    return set()
-
-def save_users(users: set[int]):
-    with open(USERS_FILE, "w") as f:
-        json.dump(list(users), f)
-
-# Загружаем пользователей при старте
-USERS = load_users()
-
-# --- Данные программ ---
+# --- Программы тренировок ---
 @dataclass(frozen=True)
 class Exercise:
     name: str
@@ -109,7 +129,6 @@ FULL_BODY_3 = Program(
         ),
     ),
 )
-
 PROGRAMS: Dict[str, Program] = {FULL_BODY_3.key: FULL_BODY_3}
 
 def render_day(day: WorkoutDay) -> str:
@@ -151,41 +170,26 @@ def program_nav_kb(pkey: str) -> InlineKeyboardBuilder:
     kb.adjust(1)
     return kb
 
-# --- Обработчики ---
+# --- Обработчики команд ---
 async def cmd_start(message: Message, bot: Bot):
     user_id = message.from_user.id
+    username = message.from_user.username
+    add_user(user_id, username)
 
-    # Добавляем пользователя, если его нет
-    if user_id not in USERS:
-        USERS.add(user_id)
-        save_users(USERS)
-        print(f"Новый пользователь: {message.from_user.username or user_id} (всего {len(USERS)})")
     if await check_subscription(bot, message.from_user.id):
-        await message.answer(
-            "Привет! Выбери программу или гайд 👇",
-            reply_markup=main_menu_kb().as_markup()
-        )
+        await message.answer("Привет! Выбери программу или гайд 👇", reply_markup=main_menu_kb().as_markup())
     else:
-        await message.answer(
-            "❗ Для доступа к боту нужно подписаться на канал:",
-            reply_markup=subscription_kb()
-        )
+        await message.answer("❗ Для доступа к боту нужно подписаться на канал:", reply_markup=subscription_kb())
 
 async def cb_check_sub(call: CallbackQuery, bot: Bot):
     if await check_subscription(bot, call.from_user.id):
-        await call.message.edit_text(
-            "✅ Подписка найдена! Теперь выбирай:",
-            reply_markup=main_menu_kb().as_markup()
-        )
+        await call.message.edit_text("✅ Подписка найдена! Теперь выбирай:", reply_markup=main_menu_kb().as_markup())
     else:
         await call.answer("Ты всё ещё не подписан!", show_alert=True)
 
-
-from aiogram.filters import Command
-
 async def cmd_stats(message: Message):
-    await message.answer(f"📊 Всего пользователей: <b>{len(USERS)}</b>")
-
+    total = count_users()
+    await message.answer(f"📊 Всего пользователей: <b>{total}</b>")
 
 async def cb_programs(call: CallbackQuery):
     await call.message.edit_text("Выбери программу:", reply_markup=programs_kb().as_markup())
@@ -222,10 +226,11 @@ async def cb_day_show(call: CallbackQuery):
 PDF_MASS_PATH = "mass_guild.pdf"
 PDF_RECOMP_PATH = "recomp_guide.pdf"
 PDF_SPORTPIT_PATH = "sportpit.pdf"
+DOCX_GASTRO_PATH = "Gayd_po_ZHKT.docx"
 VIDEO_WARMUP_PATH = "Obshesustavnaya_razminka.mp4"
 
 def guides_kb() -> InlineKeyboardMarkup:
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📘 Массоноборный гайд", callback_data="guide_mass")],
         [InlineKeyboardButton(text="⚖️ Гайд на рекомпозицию", callback_data="guide_recomp")],
         [InlineKeyboardButton(text="🍽️ Спортпит", callback_data="guide_sportpit")],
@@ -233,56 +238,33 @@ def guides_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🎥 Разминка (видео)", callback_data="guide_warmup_video")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back:main")]
     ])
-    return kb
 
 async def cb_guides_menu(call: CallbackQuery):
     await call.message.edit_text("📚 Выбери нужный гайд:", reply_markup=guides_kb())
     await call.answer()
 
-async def cb_guide_mass(call: CallbackQuery):
-    if os.path.exists(PDF_MASS_PATH):
-        await call.message.answer_document(FSInputFile(PDF_MASS_PATH))
+async def send_file_or_text(call: CallbackQuery, path: str, file_type: str, caption: str = None):
+    if os.path.exists(path):
+        if file_type == "pdf" or file_type == "docx":
+            await call.message.answer_document(FSInputFile(path), caption=caption)
+        elif file_type == "video":
+            await call.message.answer_video(FSInputFile(path), caption=caption)
     else:
-        await call.message.answer("В разработке 😢")
+        await call.message.answer("❗ Файл ещё в разработке 😢")
     await call.answer()
 
-async def cb_guide_recomp(call: CallbackQuery):
-    if os.path.exists(PDF_RECOMP_PATH):
-        await call.message.answer_document(FSInputFile(PDF_RECOMP_PATH))
-    else:
-        await call.message.answer("В разработке 😢")
-    await call.answer()
-
-async def cb_guide_sportpit(call: CallbackQuery):
-    if os.path.exists(PDF_SPORTPIT_PATH):
-        await call.message.answer_document(FSInputFile(PDF_SPORTPIT_PATH))
-    else:
-        await call.message.answer("В разработке 😢")
-    await call.answer()
-
-DOCX_GASTRO_PATH = "Gayd_po_ZHKT.docx"
-
-async def cb_guide_gastro(call: CallbackQuery):
-    if os.path.exists(DOCX_GASTRO_PATH):
-        await call.message.answer_document(FSInputFile(DOCX_GASTRO_PATH))
-    else:
-        await call.message.answer("В разработке😢")
-    await call.answer()
-
-
-async def cb_guide_warmup_video(call: CallbackQuery):
-    if os.path.exists(VIDEO_WARMUP_PATH):
-        await call.message.answer_video(FSInputFile(VIDEO_WARMUP_PATH), caption="🎥 Общесуставная разминка")
-    else:
-        await call.message.answer("Видео не найдено😢")
-    await call.answer()
+async def cb_guide_mass(call: CallbackQuery): await send_file_or_text(call, PDF_MASS_PATH, "pdf", "📘 Массоноборный гайд")
+async def cb_guide_recomp(call: CallbackQuery): await send_file_or_text(call, PDF_RECOMP_PATH, "pdf", "⚖️ Гайд на рекомпозицию")
+async def cb_guide_sportpit(call: CallbackQuery): await send_file_or_text(call, PDF_SPORTPIT_PATH, "pdf", "🍽️ Спортпит")
+async def cb_guide_gastro(call: CallbackQuery): await send_file_or_text(call, DOCX_GASTRO_PATH, "docx", "🫀 Гайд по ЖКТ")
+async def cb_guide_warmup_video(call: CallbackQuery): await send_file_or_text(call, VIDEO_WARMUP_PATH, "video", "🎥 Общесуставная разминка")
 
 # --- Регистрация ---
 def setup_router(dp: Dispatcher):
     dp.message.register(cmd_start, CommandStart())
     dp.callback_query.register(cb_check_sub, F.data == "check_sub")
-    dp.callback_query.register(cb_programs, F.data == "programs")
     dp.message.register(cmd_stats, Command("stats"))
+    dp.callback_query.register(cb_programs, F.data == "programs")
     dp.callback_query.register(cb_back_main, F.data == "back:main")
     dp.callback_query.register(cb_program_pick, F.data.startswith("prog:"))
     dp.callback_query.register(cb_program_show, F.data.startswith("prog_show:"))
@@ -297,15 +279,16 @@ def setup_router(dp: Dispatcher):
 # --- Запуск ---
 async def main():
     if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN не найден")
+        raise RuntimeError("BOT_TOKEN не найден в .env")
+    init_db()
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     dp = Dispatcher()
     setup_router(dp)
-    print("Bot started...")
+    print("✅ Бот запущен...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        print("Bot stopped")
+        print("❌ Бот остановлен")
