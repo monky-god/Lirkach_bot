@@ -59,7 +59,7 @@ def count_users() -> int:
 # --- Проверка подписки ---
 async def check_subscription(bot: Bot, user_id: int) -> bool:
     try:
-        member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+        member = await bot.get_chat_member(chat_id="https://t.me/+S8SsnOb7WVo3NGY6", user_id=user_id)
         return member.status in ("member", "administrator", "creator")
     except Exception:
         return False
