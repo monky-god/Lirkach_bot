@@ -66,7 +66,7 @@ async def check_subscription(bot: Bot, user_id: int) -> bool:
 
 def subscription_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Подписаться", url=f"https://t.me/+JEM_LTMYrcZkNGRi")],
+        [InlineKeyboardButton(text="✅ Подписаться", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
         [InlineKeyboardButton(text="🔄 Проверить подписку", callback_data="check_sub")]
     ])
 
