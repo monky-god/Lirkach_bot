@@ -59,14 +59,14 @@ def count_users() -> int:
 # --- Проверка подписки ---
 async def check_subscription(bot: Bot, user_id: int) -> bool:
     try:
-        member = await bot.get_chat_member(chat_id="https://t.me/+S8SsnOb7WVo3NGY6", user_id=user_id)
+        member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
         return member.status in ("member", "administrator", "creator")
     except Exception:
         return False
 
 def subscription_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Подписаться", url=f"https://t.me/+S8SsnOb7WVo3NGY6")],
+        [InlineKeyboardButton(text="✅ Подписаться", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
         [InlineKeyboardButton(text="🔄 Проверить подписку", callback_data="check_sub")]
     ])
 
